@@ -3,9 +3,28 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Gaze Tracker for iPad (Perfect Init)</title>
-    <!-- WebGazer.js ライブラリ -->
-    <script src="https://webgazer.cs.brown.edu/webgazer.js"></script>
+    <title>Gaze Tracker for iPad (DB Bypass)</title>
+    
+    <!-- 【超重要】WebGazerが読み込まれる前に、iPadのデータベース機能を強制的に「非対応」に偽装します -->
+    <script>
+        try {
+            // IndexedDBとWebSQLを無効化し、エラーを起こす処理自体を完全にバイパス（回避）させます
+            Object.defineProperty(window, 'indexedDB', {
+                get: function() { return undefined; },
+                configurable: true
+            });
+            Object.defineProperty(window, 'openDatabase', {
+                get: function() { return undefined; },
+                configurable: true
+            });
+        } catch (e) {
+            console.warn("DB bypass failed", e);
+        }
+    </script>
+
+    <!-- 配信元をより安定した公式CDN（cdnjs）に変更します -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/webgazer/2.0.1/webgazer.min.js"></script>
+
     <style>
         body, html {
             margin: 0;
@@ -79,7 +98,7 @@
             font-weight: bold;
         }
 
-        /* 事前に配置しておくカメラ用ビデオ要素（WebGazerに自動検出させます） */
+        /* 事前に配置しておくカメラ用ビデオ要素 */
         #webgazerVideoFeed {
             position: fixed !important;
             top: 15px !important;
@@ -91,8 +110,8 @@
             border: 2px solid #007aff !important;
             background: #000 !important;
             transform: scaleX(-1) !important; /* 鏡効果 */
-            object-fit: cover !important;     /* 顔が近く（大きく）見えるようにズームトリミング */
-            display: none;                    /* 最初は非表示にし、起動時に表示します */
+            object-fit: cover !important;     /* ズームトリミング */
+            display: none;
         }
 
         /* キャリブレーション用のドット */
@@ -117,7 +136,7 @@
 </head>
 <body>
 
-    <!-- Safariのセキュリティを突破するために、あらかじめ配置しておくvideo要素 -->
+    <!-- ビデオ要素 -->
     <video id="webgazerVideoFeed" autoplay playsinline muted></video>
 
     <!-- 疑似PC用カーソル (SVG) -->
@@ -130,7 +149,7 @@
     <!-- 案内用画面 -->
     <div id="overlay">
         <div id="instruction">
-            <h3>視線追従デモ (起動改善版)</h3>
+            <h3>視線追従デモ (偽装保護版)</h3>
             <p>ボタンを押すと、すぐにカメラの使用許可を求められます。「許可」を選択してください。</p>
             <p><small>※お顔全体が左上の青い枠内に収まるよう、50cm〜60cmほど離れて位置を調整してください。</small></p>
         </div>
@@ -169,57 +188,53 @@
             instruction.innerHTML = '再試行してください。';
         }
 
-        // ボタンが押されたら【即時】にカメラストリームを確保して再生する（Safari対策）
+        // カメラ起動シーケンス
         async function initAndStart() {
             startBtn.style.display = 'none';
             errorLog.style.display = 'none';
             instruction.innerHTML = 'カメラを起動しています...';
 
             try {
-                // 1. ユーザーのアクション（ボタンクリック）の直後に直接カメラをリクエストする
+                // 1. カメラストリーム取得
                 const constraints = { 
                     video: { facingMode: 'user' }, 
                     audio: false 
                 };
                 const stream = await navigator.mediaDevices.getUserMedia(constraints);
                 
-                // 2. video要素にストリームを流し込んで再生開始
+                // 2. 再生開始
                 videoElement.srcObject = stream;
                 await videoElement.play();
-                
-                // カメラ映像が表示されるようにする
                 videoElement.style.display = 'block';
 
                 instruction.innerHTML = '視線解析システムを準備しています...';
 
-                // 3. WebGazerを初期化（すでに再生中のvideoElementを自動検出させます）
-                webgazer.saveDataAcrossSessions(false); // IndexedDB無効化
+                // 3. WebGazer初期設定
+                webgazer.saveDataAcrossSessions(false); 
 
                 webgazer.setGazeListener(function(data, elapsedTime) {
                     if (data == null) return;
-                    // カーソルの移動
                     cursor.style.left = data.x + 'px';
                     cursor.style.top = data.y + 'px';
                 });
 
-                webgazer.showPredictionPoints(false); // デフォルトの赤いドットを非表示
+                webgazer.showPredictionPoints(false);
 
-                // WebGazerを起動
+                // 4. WebGazer開始
                 await webgazer.begin();
                 
-                // キャリブレーション開始
                 setupCalibration();
 
             } catch (err) {
-                showError('カメラの起動または初期設定に失敗しました。', err);
+                showError('起動プロセスでエラーが発生しました。', err);
             }
         }
 
-        // キャリブレーション（位置調整）開始
+        // キャリブレーション
         function setupCalibration() {
             instruction.innerHTML = '調整を開始します。<br>赤いドットを見つめながら、<b>ドットを5回</b>タップしてください。';
             overlay.style.background = 'rgba(255, 255, 255, 0.3)';
-            overlay.style.pointerEvents = 'none'; // タップが背後のドットに届くようにする
+            overlay.style.pointerEvents = 'none';
             
             currentPointIndex = 0;
             tapCount = 0;
@@ -241,7 +256,6 @@
             }
         }
 
-        // タッチ操作に高速反応させる
         calDot.addEventListener('pointerdown', function(e) {
             e.preventDefault();
             tapCount++;
@@ -253,11 +267,10 @@
             showNextDot();
         });
 
-        // 調整完了
         function finishCalibration() {
             calDot.style.display = 'none';
             overlay.style.display = 'none';
-            cursor.style.display = 'block'; // 擬似PCカーソルを表示して追従スタート
+            cursor.style.display = 'block';
         }
 
         window.addEventListener('resize', () => {
