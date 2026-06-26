@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Gaze Tracker for iPad (Fixed)</title>
+    <title>Gaze Tracker for iPad (Fix 2)</title>
     <!-- WebGazer.js ライブラリ -->
     <script src="https://webgazer.cs.brown.edu/webgazer.js"></script>
     <style>
@@ -79,19 +79,19 @@
             font-weight: bold;
         }
 
-        /* プレビュー用ビデオ要素（自動的にWebGazerに検出されます） */
+        /* WebGazerが自動生成するビデオ枠に対するスタイル調整 */
         #webgazerVideoFeed {
-            position: fixed;
-            top: 15px;
-            left: 15px;
-            width: 160px !important;  /* 少し大きくしました */
-            height: 120px !important;
-            z-index: 9999;
-            border-radius: 8px;
-            border: 2px solid #007aff;
-            background: #000;
-            transform: scaleX(-1); /* 鏡効果 */
-            object-fit: cover;    /* 周囲をトリミングしてお顔が近く（大きく）見えるようにします */
+            position: fixed !important;
+            top: 15px !important;
+            left: 15px !important;
+            width: 160px !important;   /* カメラ枠の横幅 */
+            height: 120px !important;  /* カメラ枠の縦幅 */
+            z-index: 9999 !important;
+            border-radius: 8px !important;
+            border: 2px solid #007aff !important;
+            background: #000 !important;
+            transform: scaleX(-1) !important; /* 鏡効果 */
+            object-fit: cover !important;     /* 顔が近く（大きく）見えるようにズームトリミング */
         }
 
         /* キャリブレーション用のドット */
@@ -116,8 +116,7 @@
 </head>
 <body>
 
-    <!-- iOS対応用のビデオ要素 -->
-    <video id="webgazerVideoFeed" autoplay playsinline muted></video>
+    <!-- ※手動のvideo要素は競合を避けるために削除しました -->
 
     <!-- 疑似PC用カーソル (SVG) -->
     <div id="custom-cursor">
@@ -129,7 +128,7 @@
     <!-- 案内用画面 -->
     <div id="overlay">
         <div id="instruction">
-            <h3>視線追従デモ (修正版)</h3>
+            <h3>視線追従デモ (制限解除版)</h3>
             <p>ボタンを押すとカメラの使用許可を求められます。「許可」を選択してください。</p>
             <p><small>※お顔全体が左上の青い枠内に収まるよう、50cm〜60cmほど離れて位置を調整してください。</small></p>
         </div>
@@ -167,13 +166,17 @@
             instruction.innerHTML = '再試行してください。';
         }
 
-        // WebGazerを直接起動（HTML上のビデオ要素を自動的に使用します）
         function startTracker() {
             startBtn.style.display = 'none';
             errorLog.style.display = 'none';
             instruction.innerHTML = 'カメラを起動して視線解析システムを準備しています...';
 
             try {
+                // 【超重要】制限付きiPadでのエラー(t is not a function)を回避するため、
+                // 端末のローカルデータベースへの保存を完全に無効化します。
+                webgazer.saveDataAcrossSessions(false);
+
+                // 視線監視リスナー登録
                 webgazer.setGazeListener(function(data, elapsedTime) {
                     if (data == null) return;
                     // カーソルの移動
@@ -181,14 +184,15 @@
                     cursor.style.top = data.y + 'px';
                 });
 
-                webgazer.showPredictionPoints(false); // 標準の赤い点は非表示
+                webgazer.showPredictionPoints(false); // デフォルトの赤いドットを非表示
 
+                // 起動
                 webgazer.begin()
                     .then(() => {
                         setupCalibration();
                     })
                     .catch(err => {
-                        showError('カメラの起動または初期設定に失敗しました。カメラのアクセス権限等をご確認ください。', err);
+                        showError('カメラの起動に失敗しました。Safariの設定やアクセス権限をご確認ください。', err);
                     });
 
             } catch (err) {
@@ -196,7 +200,7 @@
             }
         }
 
-        // キャリブレーション開始
+        // キャリブレーション（位置調整）開始
         function setupCalibration() {
             instruction.innerHTML = '調整を開始します。<br>赤いドットを見つめながら、<b>ドットを5回</b>タップしてください。';
             overlay.style.background = 'rgba(255, 255, 255, 0.3)';
@@ -222,7 +226,7 @@
             }
         }
 
-        // タッチ操作の反応を良くするため pointerdown を使用
+        // 指でのタップに素早く反応させる
         calDot.addEventListener('pointerdown', function(e) {
             e.preventDefault();
             tapCount++;
@@ -234,11 +238,11 @@
             showNextDot();
         });
 
-        // 追従開始
+        // 調整完了
         function finishCalibration() {
             calDot.style.display = 'none';
             overlay.style.display = 'none';
-            cursor.style.display = 'block'; // 自作カーソルの表示
+            cursor.style.display = 'block'; // 擬似PCカーソルを表示して追従スタート
         }
 
         window.addEventListener('resize', () => {
