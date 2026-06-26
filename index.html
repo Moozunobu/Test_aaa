@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Face Tracker (Debug Overlay)</title>
+    <title>Face Tracker Keyboard</title>
     
-    <!-- 軽量顔認識ライブラリ -->
+    <!-- 高互換顔認識ライブラリ -->
     <script src="https://cdn.jsdelivr.net/npm/clmtrackr@1.1.2/build/clmtrackr.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/clmtrackr@1.1.2/models/model_pca_20_svm.js"></script>
 
@@ -18,6 +18,7 @@
             overflow: hidden;
             background-color: #f0f2f5;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            user-select: none;
         }
 
         /* 疑似PC用マウスカーソル */
@@ -27,13 +28,13 @@
             height: 24px;
             left: 50%;
             top: 50%;
-            pointer-events: none;
+            pointer-events: none; /* 下の要素のクリックを邪魔しない */
             z-index: 9999;
             display: none;
-            transition: transform 0.08s ease-out;
+            transition: transform 0.05s ease-out;
         }
 
-        /* スタート画面 */
+        /* スタート画面・調整画面 */
         #overlay {
             position: fixed;
             top: 0;
@@ -59,17 +60,6 @@
             max-width: 500px;
         }
 
-        #error-log {
-            margin-top: 15px;
-            padding: 10px;
-            background: #ffe5e5;
-            color: #cc0000;
-            border-radius: 6px;
-            font-size: 0.9rem;
-            display: none;
-            max-width: 90%;
-        }
-
         button {
             padding: 14px 28px;
             font-size: 1rem;
@@ -81,7 +71,7 @@
             font-weight: bold;
         }
 
-        /* ビデオとデバッグ用キャンバスを重ねて配置するコンテナ */
+        /* カメラとデバッグ表示 */
         .video-container {
             position: fixed;
             top: 15px;
@@ -93,84 +83,214 @@
             border: 2px solid #007aff;
             background: #000;
             overflow: hidden;
-            display: none; /* 最初は非表示 */
+            display: none;
         }
 
         #webgazerVideoFeed {
             width: 100%;
             height: 100%;
-            transform: scaleX(-1); /* 鏡効果 */
+            transform: scaleX(-1);
             object-fit: cover;
         }
 
-        /* 認識している顔の線を重ねて表示する透明キャンバス */
         #debug-canvas {
             position: absolute;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            transform: scaleX(-1); /* ビデオに合わせて鏡反転 */
+            transform: scaleX(-1);
             pointer-events: none;
         }
 
-        /* キャリブレーション用ドット */
+        /* 画面右上の調整パネル（感度など） */
+        #control-panel {
+            position: fixed;
+            top: 15px;
+            right: 15px;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 15px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            z-index: 8000;
+            display: none;
+            width: 220px;
+        }
+
+        .slider-group {
+            margin-bottom: 12px;
+        }
+
+        .slider-group label {
+            display: block;
+            font-size: 0.8rem;
+            font-weight: bold;
+            color: #555;
+            margin-bottom: 4px;
+        }
+
+        .slider-group input {
+            width: 100%;
+        }
+
+        /* メインのキーパッド画面 */
+        #app-content {
+            display: none;
+            width: 100%;
+            height: 100%;
+            box-sizing: border-box;
+            padding-top: 140px; /* カメラ枠を避ける */
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* ディスプレイ部分 */
+        #display-panel {
+            width: 280px;
+            height: 60px;
+            background-color: #1c1c1e;
+            color: #fff;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            padding: 0 20px;
+            font-size: 2rem;
+            box-sizing: border-box;
+            font-weight: bold;
+        }
+
+        /* キーパッドグリッド */
+        .keypad {
+            display: grid;
+            grid-template-columns: repeat(3, 80px);
+            grid-gap: 15px;
+        }
+
+        /* 各ボタン */
+        .key {
+            width: 80px;
+            height: 80px;
+            background-color: #e5e5ea;
+            color: #000;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.8rem;
+            font-weight: bold;
+            box-sizing: border-box;
+            border: 3px solid transparent;
+            transition: background-color 0.1s, border-color 0.1s;
+        }
+
+        /* カーソルが上に重なった時（ホバー） */
+        .key.hover {
+            border-color: #ff9500;
+            background-color: #d1d1d6;
+        }
+
+        /* ウインクで押された瞬間 */
+        .key.active {
+            background-color: #ff9500 !important;
+            color: white;
+            transform: scale(0.92);
+        }
+
+        .key.orange {
+            background-color: #ff9500;
+            color: white;
+        }
+        .key.orange.hover {
+            background-color: #e08500;
+            border-color: #007aff;
+        }
+
+        /* キャリブレーションドット */
         #calibration-dot {
             position: fixed;
             top: 50%;
             left: 50%;
-            width: 40px;
-            height: 40px;
+            width: 45px;
+            height: 45px;
             background-color: #ff3b30;
             border-radius: 50%;
             display: none;
             z-index: 9500;
             transform: translate(-50%, -50%);
             box-shadow: 0 0 15px rgba(255, 59, 48, 0.6);
-            justify-content: center;
-            align-items: center;
-            color: white;
-            font-size: 20px;
-            font-weight: bold;
-            user-select: none;
             cursor: pointer;
         }
     </style>
 </head>
 <body>
 
-    <!-- ビデオと顔認識線を描くキャンバスを重ねて配置 -->
+    <!-- ビデオとデバッグキャンバス -->
     <div class="video-container" id="video-box">
         <video id="webgazerVideoFeed" autoplay playsinline muted></video>
         <canvas id="debug-canvas"></canvas>
     </div>
 
-    <!-- 疑似PC用カーソル (SVG) -->
+    <!-- 疑似PC用マウスカーソル -->
     <div id="custom-cursor">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M4.5 3V19.5L9.75 14.25H18L4.5 3Z" fill="white" stroke="black" stroke-width="2" stroke-linejoin="miter"/>
         </svg>
     </div>
 
-    <!-- 案内用画面 -->
-    <div id="overlay">
-        <div id="instruction">
-            <h3>顔・視線追従デモ (デバッグ表示版)</h3>
-            <p>ボタンを押してカメラを許可してください。</p>
-            <p><small>※学校等の通信制限がある場合、稀に顔データがロードされない場合があります。</small></p>
+    <!-- パネル（感度調整用） -->
+    <div id="control-panel">
+        <div class="slider-group">
+            <label>操作感度 (顔の動き幅): <span id="val-sens">35</span></label>
+            <input type="range" id="slide-sens" min="15" max="60" value="35">
         </div>
-        <button id="start-btn" onclick="initAndStart()">カメラを起動する</button>
-        <div id="error-log"></div>
+        <div class="slider-group">
+            <label>左目ウインク感度: <span id="val-wink">0.16</span></label>
+            <input type="range" id="slide-wink" min="0.10" max="0.22" step="0.01" value="0.16">
+        </div>
+        <div style="font-size: 0.75rem; color: #666; text-align: center; margin-top: 5px;">
+            左目をパチッと閉じるとクリック！
+        </div>
     </div>
 
-    <!-- キャリブレーション（中央1点のみ） -->
+    <!-- スタート画面 -->
+    <div id="overlay">
+        <div id="instruction">
+            <h3>顔追従 & ウインクキーパッド</h3>
+            <p>開始すると高解像度カメラが起動します。許可をタップしてください。</p>
+        </div>
+        <button id="start-btn" onclick="initAndStart()">カメラを起動する</button>
+    </div>
+
+    <!-- キャリブレーションドット -->
     <div id="calibration-dot"></div>
+
+    <!-- アプリメイン画面 -->
+    <div id="app-content">
+        <div id="display-panel"></div>
+        <div class="keypad">
+            <div class="key" onclick="pressKey('1')">1</div>
+            <div class="key" onclick="pressKey('2')">2</div>
+            <div class="key" onclick="pressKey('3')">3</div>
+            <div class="key" onclick="pressKey('4')">4</div>
+            <div class="key" onclick="pressKey('5')">5</div>
+            <div class="key" onclick="pressKey('6')">6</div>
+            <div class="key" onclick="pressKey('7')">7</div>
+            <div class="key" onclick="pressKey('8')">8</div>
+            <div class="key" onclick="pressKey('9')">9</div>
+            <div class="key orange" onclick="pressKey('C')">C</div>
+            <div class="key" onclick="pressKey('0')">0</div>
+            <div class="key orange" onclick="pressKey('E')">▶</div>
+        </div>
+    </div>
 
     <script>
         const overlay = document.getElementById('overlay');
         const instruction = document.getElementById('instruction');
         const startBtn = document.getElementById('start-btn');
-        const errorLog = document.getElementById('error-log');
         const calDot = document.getElementById('calibration-dot');
         const cursor = document.getElementById('custom-cursor');
         
@@ -178,6 +298,15 @@
         const videoElement = document.getElementById('webgazerVideoFeed');
         const debugCanvas = document.getElementById('debug-canvas');
         const debugCtx = debugCanvas.getContext('2d');
+        const appContent = document.getElementById('app-content');
+        const displayPanel = document.getElementById('display-panel');
+        const controlPanel = document.getElementById('control-panel');
+
+        // スライダー要素
+        const slideSens = document.getElementById('slide-sens');
+        const valSens = document.getElementById('val-sens');
+        const slideWink = document.getElementById('slide-wink');
+        const valWink = document.getElementById('val-wink');
 
         let ctrack;
         let isCalibrated = false;
@@ -188,98 +317,91 @@
         let cursorX = window.innerWidth / 2;
         let cursorY = window.innerHeight / 2;
         
-        const sensitivityX = 20; 
-        const sensitivityY = 24; 
+        // スライダーから読み込む変数
+        let sensitivity = parseInt(slideSens.value);
+        let winkThreshold = parseFloat(slideWink.value);
+        let isWinking = false; // チャタリング防止用フラグ
 
-        function showError(message, err) {
-            errorLog.style.display = 'block';
-            errorLog.innerHTML = `<strong>エラー:</strong> ${message}<br><small>${err ? err.message : ''}</small>`;
-            startBtn.style.display = 'inline-block';
-            instruction.innerHTML = '再試行してください。';
+        // スライダーイベント
+        slideSens.addEventListener('input', (e) => {
+            sensitivity = parseInt(e.target.value);
+            valSens.innerText = sensitivity;
+        });
+        slideWink.addEventListener('input', (e) => {
+            winkThreshold = parseFloat(e.target.value);
+            valWink.innerText = winkThreshold.toFixed(2);
+        });
+
+        // 2点間の距離を測る関数（ウインク判定用）
+        function getDistance(p1, p2) {
+            return Math.sqrt(Math.pow(p1[0] - p2[0], 2) + Math.pow(p1[1] - p2[1], 2));
         }
 
         async function initAndStart() {
             startBtn.style.display = 'none';
-            errorLog.style.display = 'none';
-            instruction.innerHTML = 'カメラを起動しています...';
+            instruction.innerHTML = '高画質カメラを起動しています...';
 
             try {
-                // 顔認識ライブラリのロード確認
-                if (typeof pModel === 'undefined') {
-                    showError('顔認識用のモデルデータが読み込めていません。ネットワーク環境や制限等によりダウンロードが遮断されている可能性があります。', null);
-                    return;
-                }
-
-                // 1. カメラ起動
-                const stream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { facingMode: 'user' }, 
+                // 1. カメラ起動（ズーム代わりに解像度を1280x720のHDに強化、遠くでも精細に検知）
+                const constraints = { 
+                    video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } }, 
                     audio: false 
-                });
+                };
+                const stream = await navigator.mediaDevices.getUserMedia(constraints);
                 videoElement.srcObject = stream;
+
+                // メタデータの読み込みを待つ
+                await new Promise((resolve) => {
+                    videoElement.onloadedmetadata = () => { resolve(); };
+                });
+
                 await videoElement.play();
-                videoBox.style.display = 'block'; // プレビュー枠を表示
+                videoBox.style.display = 'block';
 
-                // 2. 【超重要】iPadのカメラサイズが正しく反映されるまで100msごとにループ待機する
-                instruction.innerHTML = 'iPadのカメラ解像度を測定中...';
-                let waitCount = 0;
-                while ((videoElement.videoWidth === 0 || videoElement.videoHeight === 0) && waitCount < 50) {
-                    await new Promise(resolve => setTimeout(resolve, 100));
-                    waitCount++;
-                }
-
-                const w = videoElement.videoWidth || 640;
-                const h = videoElement.videoHeight || 480;
-
-                // ビデオと、重ねるキャンバスのサイズを確実に同期させる
+                // 解像度を設定
+                const w = videoElement.videoWidth || 1280;
+                const h = videoElement.videoHeight || 720;
                 videoElement.width = w;
                 videoElement.height = h;
                 debugCanvas.width = w;
                 debugCanvas.height = h;
 
-                instruction.innerHTML = `お顔を検出しています... (カメラサイズ: ${w}x${h})`;
+                instruction.innerHTML = '顔認識システムを準備中...';
 
-                // 3. clmtrackrの初期化
+                // 2. clmtrackr初期化
                 ctrack = new clm.tracker();
                 ctrack.init(pModel);
                 ctrack.start(videoElement);
 
-                // 顔認識待機（描画デバッグあり）のループへ
-                checkFaceDetectionWithDebug();
+                checkFaceDetection();
 
             } catch (err) {
-                showError('カメラの起動または初期化中にエラーが発生しました。', err);
+                instruction.innerHTML = 'カメラ起動に失敗しました。Safariの設定や権限を確認してください。';
+                startBtn.style.display = 'inline-block';
             }
         }
 
-        // 顔の検出判定（左上に緑色の骨格線を描画します）
-        function checkFaceDetectionWithDebug() {
+        function checkFaceDetection() {
             const positions = ctrack.getCurrentPosition();
-            
-            // 毎フレーム描画をクリア
             debugCtx.clearRect(0, 0, debugCanvas.width, debugCanvas.height);
 
             if (positions && positions.length > 0) {
-                // 顔を検出できたら、左上のビデオの中に「緑の骨格線」を描画する
                 ctrack.draw(debugCanvas);
-                
-                // 調整画面へ進む
                 setupCalibration();
             } else {
-                instruction.innerHTML = `お顔を探しています...<br><small>左上の枠内に顔が収まるよう、明るい部屋でカメラを真っ直ぐ見つめてください。</small>`;
-                // 検出できるまでループ
-                setTimeout(checkFaceDetectionWithDebug, 100);
+                instruction.innerHTML = 'お顔を探しています...<br><small>左上の枠にお顔が真っ直ぐ入るようにしてください。</small>';
+                setTimeout(checkFaceDetection, 100);
             }
         }
 
-        // 調整案内
         function setupCalibration() {
-            instruction.innerHTML = 'お顔の感知に成功しました！<br><br>姿勢を正し、<b>画面中央の「赤い丸」をじっと見つめながら</b>、丸をタップしてください。';
+            instruction.innerHTML = 'お顔を認識しました！<br><br>背筋を伸ばして<b>画面中央の「赤い丸」をじっと見つめながら</b>、丸をタップしてください。';
             overlay.style.background = 'rgba(255, 255, 255, 0.3)';
             overlay.style.pointerEvents = 'none';
-            calDot.style.display = 'flex';
+            calDot.style.display = 'block';
         }
 
-        // 基準値の登録
+        // キャリブレーション実行
         calDot.addEventListener('pointerdown', function(e) {
             e.preventDefault();
             const positions = ctrack.getCurrentPosition();
@@ -291,15 +413,19 @@
                 isCalibrated = true;
                 calDot.style.display = 'none';
                 overlay.style.display = 'none';
+                
+                // アプリ画面と調整パネル、疑似カーソルの表示
+                appContent.style.display = 'flex';
+                controlPanel.style.display = 'block';
                 cursor.style.display = 'block';
 
                 trackingLoop();
             } else {
-                alert("お顔の位置ずれを取得できませんでした。正面を向いてもう一度お試しください。");
+                alert("お顔の位置を測定できませんでした。正面を向いて再度タップしてください。");
             }
         });
 
-        // 追従ループ（ここでも骨格線を常に描画し続けます）
+        // メインループ
         function trackingLoop() {
             if (!isCalibrated) return;
 
@@ -309,19 +435,19 @@
             debugCtx.clearRect(0, 0, debugCanvas.width, debugCanvas.height);
 
             if (positions && positions[62]) {
-                // 顔の骨格を左上に描き続ける（動いているかどうかの目印）
                 ctrack.draw(debugCanvas);
 
+                // --- 1. 顔の動きによるカーソル移動 ---
                 const currentX = positions[62][0];
                 const currentY = positions[62][1];
 
                 const diffX = -(currentX - neutralX);
                 const diffY = currentY - neutralY;
 
-                const targetX = (window.innerWidth / 2) + (diffX * sensitivityX);
-                const targetY = (window.innerHeight / 2) + (diffY * sensitivityY);
+                // スライダー感度(sensitivity)を適用
+                const targetX = (window.innerWidth / 2) + (diffX * sensitivity);
+                const targetY = (window.innerHeight / 2) + (diffY * sensitivity);
 
-                // 滑らかフィルター
                 cursorX = cursorX * 0.7 + targetX * 0.3;
                 cursorY = cursorY * 0.7 + targetY * 0.3;
 
@@ -330,8 +456,68 @@
 
                 cursor.style.left = finalX + 'px';
                 cursor.style.top = finalY + 'px';
+
+                // --- 2. カーソル下のキーパッド要素の検出 ---
+                // カーソル位置にあるHTML要素を取得する
+                const hoveredElement = document.elementFromPoint(finalX, finalY);
+                
+                // 全てのキーのホバー（黄色枠）を一旦解除
+                document.querySelectorAll('.key').forEach(el => el.classList.remove('hover'));
+
+                let targetKey = null;
+                if (hoveredElement && hoveredElement.classList.contains('key')) {
+                    targetKey = hoveredElement;
+                    targetKey.classList.add('hover'); // ホバーエフェクト
+                }
+
+                // --- 3. 左目のウインク（クリック）判定 ---
+                // 左目（カメラ反転なので positions[28]~[31]）の縦横比
+                const leftHoriz = getDistance(positions[28], positions[31]);
+                const leftVert = getDistance(positions[68], positions[69]);
+                const leftRatio = leftVert / leftHoriz;
+
+                // 右目（positions[23]~[26]）の縦横比
+                const rightHoriz = getDistance(positions[23], positions[26]);
+                const rightVert = getDistance(positions[64], positions[65]);
+                const rightRatio = rightVert / rightHoriz;
+
+                // ウインク判定：左目が閉じ、右目が開いている状態
+                // 目が開いている時は通常0.22〜0.30、閉じると0.15以下になります。
+                if (leftRatio < winkThreshold && rightRatio > 0.20) {
+                    if (!isWinking) {
+                        isWinking = true;
+                        if (targetKey) {
+                            triggerClick(targetKey);
+                        }
+                    }
+                } else if (leftRatio > 0.19) {
+                    // 左目が開いたらクリックトリガーをリセット
+                    isWinking = false;
+                }
             }
         }
-    </script>
-</body>
-</html>
+
+        // ウインクによるクリックアクション
+        function triggerClick(element) {
+            element.classList.add('active'); // 押された瞬間のビジュアル
+            setTimeout(() => {
+                element.classList.remove('active');
+            }, 180);
+
+            // 要素に設定された onclick イベントを発火させる
+            element.click();
+        }
+
+        // キーパッドの入力処理
+        let typedText = "";
+        function pressKey(val) {
+            if (val === 'C') {
+                typedText = "";
+            } else if (val === 'E') {
+                if (typedText !== "") {
+                    alert(`「${typedText}」が送信されました！`);
+                    typedText = "";
+                }
+            } else {
+                if (typedText.length < 8) {
+                    typedText += val;
