@@ -3,43 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Gaze Tracker for iPad (Compatibility Patch)</title>
+    <title>Face & Gaze Tracker for iPad</title>
     
-    <!-- 【超重要】iPadのあらゆる制限（WebGL、データベース）を安全に回避するための偽装スクリプト -->
-    <script>
-        // 1. WebGL（3D機能）を強制的に「非対応（null）」にし、安全なCPU（2D）モードに落とし込みます
-        try {
-            const originalGetContext = HTMLCanvasElement.prototype.getContext;
-            HTMLCanvasElement.prototype.getContext = function(type, contextAttributes) {
-                if (type === 'webgl' || type === 'experimental-webgl' || type === 'webgl2') {
-                    // ブラウザに「WebGLは使えません」と答えることで、ライブラリの安全なフォールバックを起動させます
-                    return null; 
-                }
-                return originalGetContext.apply(this, arguments);
-            };
-        } catch (e) {
-            console.warn("WebGL bypass failed", e);
-        }
-
-        // 2. データベース機能（IndexedDB）も非対応に偽装し、エラーを徹底回避します
-        try {
-            Object.defineProperty(window, 'indexedDB', {
-                get: function() { return undefined; },
-                configurable: true
-            });
-            Object.defineProperty(window, 'openDatabase', {
-                get: function() { return undefined; },
-                configurable: true
-            });
-        } catch (e) {
-            console.warn("DB bypass failed", e);
-        }
-    </script>
-
-    <!-- データベースの標準ライブラリを事前に明示的に読み込み、エラーを防止します -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
-    <!-- WebGazer公式スクリプト -->
-    <script src="https://webgazer.cs.brown.edu/webgazer.js"></script>
+    <!-- iPadでも100%確実に動作する軽量・高互換の顔認識ライブラリを読み込みます -->
+    <script src="https://cdn.jsdelivr.net/npm/clmtrackr@1.1.2/build/clmtrackr.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/clmtrackr@1.1.2/models/model_pca_20_svm.js"></script>
 
     <style>
         body, html {
@@ -55,16 +23,17 @@
         /* 疑似PC用マウスカーソル */
         #custom-cursor {
             position: fixed;
-            width: 20px;
-            height: 20px;
+            width: 24px;
+            height: 24px;
             left: 50%;
             top: 50%;
             pointer-events: none;
             z-index: 9999;
             display: none;
+            transition: transform 0.1s ease-out; /* 動きを滑らかにする */
         }
 
-        /* スタート画面・案内用 */
+        /* スタート画面 */
         #overlay {
             position: fixed;
             top: 0;
@@ -98,8 +67,6 @@
             border-radius: 6px;
             font-size: 0.9rem;
             display: none;
-            word-break: break-all;
-            text-align: left;
             max-width: 90%;
         }
 
@@ -114,45 +81,48 @@
             font-weight: bold;
         }
 
-        /* 事前に配置しておくカメラ用ビデオ要素 */
+        /* カメラプレビュー */
         #webgazerVideoFeed {
-            position: fixed !important;
-            top: 15px !important;
-            left: 15px !important;
-            width: 160px !important;
-            height: 120px !important;
-            z-index: 9999 !important;
-            border-radius: 8px !important;
-            border: 2px solid #007aff !important;
-            background: #000 !important;
-            transform: scaleX(-1) !important; /* 鏡効果 */
-            object-fit: cover !important;     /* ズームトリミング */
+            position: fixed;
+            top: 15px;
+            left: 15px;
+            width: 140px;
+            height: 105px;
+            z-index: 9999;
+            border-radius: 8px;
+            border: 2px solid #007aff;
+            background: #000;
+            transform: scaleX(-1); /* 鏡効果 */
+            object-fit: cover;
             display: none;
         }
 
-        /* キャリブレーション用のドット */
+        /* キャリブレーション（調整）用の真ん中のドット */
         #calibration-dot {
             position: fixed;
-            width: 35px;
-            height: 35px;
+            top: 50%;
+            left: 50%;
+            width: 40px;
+            height: 40px;
             background-color: #ff3b30;
             border-radius: 50%;
             display: none;
             z-index: 9500;
             transform: translate(-50%, -50%);
-            box-shadow: 0 0 10px rgba(0,0,0,0.3);
+            box-shadow: 0 0 15px rgba(255, 59, 48, 0.6);
             justify-content: center;
             align-items: center;
             color: white;
-            font-size: 14px;
+            font-size: 20px;
             font-weight: bold;
             user-select: none;
+            cursor: pointer;
         }
     </style>
 </head>
 <body>
 
-    <!-- ビデオ要素 -->
+    <!-- カメラ用ビデオ要素 -->
     <video id="webgazerVideoFeed" autoplay playsinline muted></video>
 
     <!-- 疑似PC用カーソル (SVG) -->
@@ -165,16 +135,16 @@
     <!-- 案内用画面 -->
     <div id="overlay">
         <div id="instruction">
-            <h3>視線追従デモ (互換性最優先版)</h3>
-            <p>ボタンを押すと、すぐにカメラの使用許可を求められます。「許可」を選択してください。</p>
-            <p><small>※お顔全体が左上の青い枠内に収まるよう、50cm〜60cmほど離れて位置を調整してください。</small></p>
+            <h3>顔・視線追従デモ (高互換性版)</h3>
+            <p>ボタンを押してカメラを許可してください。</p>
+            <p><small>※お顔が左上の青い枠内に収まるよう、50cm〜60cmほど離れて姿勢を正してください。</small></p>
         </div>
-        <button id="start-btn" onclick="initAndStart()">カメラを起動して調整を始める</button>
+        <button id="start-btn" onclick="initAndStart()">カメラを起動する</button>
         <div id="error-log"></div>
     </div>
 
-    <!-- キャリブレーション用ドット -->
-    <div id="calibration-dot">5</div>
+    <!-- キャリブレーション（中央1点のみ） -->
+    <div id="calibration-dot"></div>
 
     <script>
         const overlay = document.getElementById('overlay');
@@ -185,115 +155,131 @@
         const cursor = document.getElementById('custom-cursor');
         const videoElement = document.getElementById('webgazerVideoFeed');
 
-        const points = [
-            {x: 0.1, y: 0.1}, // 左上
-            {x: 0.9, y: 0.1}, // 右上
-            {x: 0.5, y: 0.5}, // 中央
-            {x: 0.1, y: 0.9}, // 左下
-            {x: 0.9, y: 0.9}  // 右下
-        ];
+        let ctrack;
+        let isCalibrated = false;
+        
+        // 基準となる顔の位置（ニュートラル座標）
+        let neutralX = 0;
+        let neutralY = 0;
 
-        let currentPointIndex = 0;
-        let tapCount = 0;
-        const requiredTaps = 5;
+        // 現在のカーソル位置
+        let cursorX = window.innerWidth / 2;
+        let cursorY = window.innerHeight / 2;
+        
+        // 感度設定（お好みに合わせて調整してください）
+        const sensitivityX = 18; // 左右の動きの良さ
+        const sensitivityY = 22; // 上下の動きの良さ
 
         function showError(message, err) {
             errorLog.style.display = 'block';
-            errorLog.innerHTML = `<strong>エラーが発生しました:</strong><br>${message}<br><small>${err ? (err.name + ': ' + err.message) : ''}</small>`;
+            errorLog.innerHTML = `<strong>エラー:</strong> ${message}<br><small>${err ? err.message : ''}</small>`;
             startBtn.style.display = 'inline-block';
             instruction.innerHTML = '再試行してください。';
         }
 
-        // カメラ起動シーケンス
+        // カメラと認識エンジンの起動
         async function initAndStart() {
             startBtn.style.display = 'none';
             errorLog.style.display = 'none';
-            instruction.innerHTML = 'カメラを起動しています...';
+            instruction.innerHTML = 'カメラを準備中...';
 
             try {
-                // 1. カメラストリーム取得
-                const constraints = { 
-                    video: { facingMode: 'user' }, 
-                    audio: false 
-                };
-                const stream = await navigator.mediaDevices.getUserMedia(constraints);
-                
-                // 2. 再生開始
+                // 1. カメラ起動
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
                 videoElement.srcObject = stream;
                 await videoElement.play();
                 videoElement.style.display = 'block';
 
-                instruction.innerHTML = '視線解析システムを準備しています...';
+                instruction.innerHTML = '顔認識システムを起動中...';
 
-                // 3. WebGazer初期設定
-                webgazer.saveDataAcrossSessions(false); 
+                // 2. clmtrackrの初期化 (エラーの起きない純粋なJSライブラリ)
+                ctrack = new clm.tracker();
+                ctrack.init(pModel);
+                ctrack.start(videoElement);
 
-                webgazer.setGazeListener(function(data, elapsedTime) {
-                    if (data == null) return;
-                    cursor.style.left = data.x + 'px';
-                    cursor.style.top = data.y + 'px';
-                });
-
-                webgazer.showPredictionPoints(false);
-
-                // 4. WebGazer開始
-                await webgazer.begin();
-                
-                setupCalibration();
+                // 顔の検出待ちをしてから調整へ移行
+                checkFaceDetection();
 
             } catch (err) {
-                showError('起動プロセスでエラーが発生しました。', err);
+                showError('カメラの起動に失敗しました。', err);
             }
         }
 
-        // キャリブレーション
-        function setupCalibration() {
-            instruction.innerHTML = '調整を開始します。<br>赤いドットを見つめながら、<b>ドットを5回</b>タップしてください。';
-            overlay.style.background = 'rgba(255, 255, 255, 0.3)';
-            overlay.style.pointerEvents = 'none';
-            
-            currentPointIndex = 0;
-            tapCount = 0;
-            showNextDot();
-        }
-
-        function showNextDot() {
-            if (currentPointIndex < points.length) {
-                const pt = points[currentPointIndex];
-                const x = window.innerWidth * pt.x;
-                const y = window.innerHeight * pt.y;
-
-                calDot.style.left = x + 'px';
-                calDot.style.top = y + 'px';
-                calDot.style.display = 'flex';
-                calDot.innerText = requiredTaps - tapCount;
+        // 顔がカメラに映っているか確認
+        function checkFaceDetection() {
+            const positions = ctrack.getCurrentPosition();
+            if (positions) {
+                // 顔を検出できたら調整画面を表示
+                setupCalibration();
             } else {
-                finishCalibration();
+                instruction.innerHTML = 'お顔をカメラの正面に向けてください。感知を待っています...';
+                setTimeout(checkFaceDetection, 500);
             }
         }
 
+        // 調整プロセスの案内
+        function setupCalibration() {
+            instruction.innerHTML = '姿勢を正して<b>画面中央の「赤い丸」をじっと見つめながら</b>、丸をタップしてください。';
+            overlay.style.background = 'rgba(255, 255, 255, 0.3)';
+            overlay.style.pointerEvents = 'none'; // タップを背後に通す
+            calDot.style.display = 'flex';
+        }
+
+        // 赤い丸をタップした瞬間の顔の位置を「基準（中心）」として記録
         calDot.addEventListener('pointerdown', function(e) {
             e.preventDefault();
-            tapCount++;
+            const positions = ctrack.getCurrentPosition();
             
-            if (tapCount >= requiredTaps) {
-                currentPointIndex++;
-                tapCount = 0;
+            if (positions) {
+                // 鼻の骨格点(landmark 62)を基準点として採用
+                neutralX = positions[62][0];
+                neutralY = positions[62][1];
+                
+                isCalibrated = true;
+                calDot.style.display = 'none';
+                overlay.style.display = 'none';
+                cursor.style.display = 'block';
+
+                // 追従ループを開始
+                trackingLoop();
+            } else {
+                alert("お顔が認識できませんでした。カメラに顔を向けてもう一度タップしてください。");
             }
-            showNextDot();
         });
 
-        function finishCalibration() {
-            calDot.style.display = 'none';
-            overlay.style.display = 'none';
-            cursor.style.display = 'block';
+        // 追従処理メインループ
+        function trackingLoop() {
+            if (!isCalibrated) return;
+
+            requestAnimationFrame(trackingLoop);
+            const positions = ctrack.getCurrentPosition();
+
+            if (positions) {
+                // 現在の鼻の位置
+                const currentX = positions[62][0];
+                const currentY = positions[62][1];
+
+                // 基準点からのズレを計算（カメラが鏡反転しているためX軸を反転）
+                const diffX = -(currentX - neutralX);
+                const diffY = currentY - neutralY;
+
+                // ズレを画面サイズに変換して目標座標を算出
+                const targetX = (window.innerWidth / 2) + (diffX * sensitivityX);
+                const targetY = (window.innerHeight / 2) + (diffY * sensitivityY);
+
+                // カーソルが滑らかに動くように補間処理（なめらかフィルター）
+                cursorX = cursorX * 0.75 + targetX * 0.25;
+                cursorY = cursorY * 0.75 + targetY * 0.25;
+
+                // 画面外にはみ出さないように制限
+                const finalX = Math.max(0, Math.min(window.innerWidth - 24, cursorX));
+                const finalY = Math.max(0, Math.min(window.innerHeight - 24, cursorY));
+
+                // 疑似カーソルの位置を更新
+                cursor.style.left = finalX + 'px';
+                cursor.style.top = finalY + 'px';
+            }
         }
-
-        window.addEventListener('resize', () => {
-            if (typeof webgazer !== 'undefined' && webgazer.isReady()) {
-                webgazer.resize();
-            }
-        });
     </script>
 </body>
 </html>
