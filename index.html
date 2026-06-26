@@ -3,10 +3,25 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Gaze Tracker for iPad (Final Patch)</title>
+    <title>Gaze Tracker for iPad (Compatibility Patch)</title>
     
-    <!-- 【超重要】WebGazerが読み込まれる前に、iPadのデータベース機能を「非対応」に偽装しクラッシュを防ぎます -->
+    <!-- 【超重要】iPadのあらゆる制限（WebGL、データベース）を安全に回避するための偽装スクリプト -->
     <script>
+        // 1. WebGL（3D機能）を強制的に「非対応（null）」にし、安全なCPU（2D）モードに落とし込みます
+        try {
+            const originalGetContext = HTMLCanvasElement.prototype.getContext;
+            HTMLCanvasElement.prototype.getContext = function(type, contextAttributes) {
+                if (type === 'webgl' || type === 'experimental-webgl' || type === 'webgl2') {
+                    // ブラウザに「WebGLは使えません」と答えることで、ライブラリの安全なフォールバックを起動させます
+                    return null; 
+                }
+                return originalGetContext.apply(this, arguments);
+            };
+        } catch (e) {
+            console.warn("WebGL bypass failed", e);
+        }
+
+        // 2. データベース機能（IndexedDB）も非対応に偽装し、エラーを徹底回避します
         try {
             Object.defineProperty(window, 'indexedDB', {
                 get: function() { return undefined; },
@@ -21,7 +36,9 @@
         }
     </script>
 
-    <!-- 確実に読み込める公式アドレスに戻しました -->
+    <!-- データベースの標準ライブラリを事前に明示的に読み込み、エラーを防止します -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
+    <!-- WebGazer公式スクリプト -->
     <script src="https://webgazer.cs.brown.edu/webgazer.js"></script>
 
     <style>
@@ -148,7 +165,7 @@
     <!-- 案内用画面 -->
     <div id="overlay">
         <div id="instruction">
-            <h3>視線追従デモ (完成パッチ版)</h3>
+            <h3>視線追従デモ (互換性最優先版)</h3>
             <p>ボタンを押すと、すぐにカメラの使用許可を求められます。「許可」を選択してください。</p>
             <p><small>※お顔全体が左上の青い枠内に収まるよう、50cm〜60cmほど離れて位置を調整してください。</small></p>
         </div>
