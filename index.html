@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Gaze Tracker for iPad (Debug Version)</title>
+    <title>Gaze Tracker for iPad (Fixed)</title>
     <!-- WebGazer.js ライブラリ -->
     <script src="https://webgazer.cs.brown.edu/webgazer.js"></script>
     <style>
@@ -79,18 +79,19 @@
             font-weight: bold;
         }
 
-        /* iPadで確実にインライン表示するためのビデオ要素 */
+        /* プレビュー用ビデオ要素（自動的にWebGazerに検出されます） */
         #webgazerVideoFeed {
             position: fixed;
-            top: 10px;
-            left: 10px;
-            width: 120px !important;
-            height: 90px !important;
+            top: 15px;
+            left: 15px;
+            width: 160px !important;  /* 少し大きくしました */
+            height: 120px !important;
             z-index: 9999;
             border-radius: 8px;
             border: 2px solid #007aff;
             background: #000;
-            transform: scaleX(-1); /* 鏡のように反転 */
+            transform: scaleX(-1); /* 鏡効果 */
+            object-fit: cover;    /* 周囲をトリミングしてお顔が近く（大きく）見えるようにします */
         }
 
         /* キャリブレーション用のドット */
@@ -115,7 +116,7 @@
 </head>
 <body>
 
-    <!-- iOS対応のために明示的に定義したプレビュー用ビデオ要素 -->
+    <!-- iOS対応用のビデオ要素 -->
     <video id="webgazerVideoFeed" autoplay playsinline muted></video>
 
     <!-- 疑似PC用カーソル (SVG) -->
@@ -128,11 +129,11 @@
     <!-- 案内用画面 -->
     <div id="overlay">
         <div id="instruction">
-            <h3>視線追従デモ (iPad対応版)</h3>
-            <p>※アドレスバーの左端が「鍵マーク（https）」になっていることを確認してください。</p>
+            <h3>視線追従デモ (修正版)</h3>
             <p>ボタンを押すとカメラの使用許可を求められます。「許可」を選択してください。</p>
+            <p><small>※お顔全体が左上の青い枠内に収まるよう、50cm〜60cmほど離れて位置を調整してください。</small></p>
         </div>
-        <button id="start-btn" onclick="initCameraAndTracker()">カメラを起動する</button>
+        <button id="start-btn" onclick="startTracker()">カメラを起動して調整を始める</button>
         <div id="error-log"></div>
     </div>
 
@@ -146,7 +147,6 @@
         const errorLog = document.getElementById('error-log');
         const calDot = document.getElementById('calibration-dot');
         const cursor = document.getElementById('custom-cursor');
-        const videoElement = document.getElementById('webgazerVideoFeed');
 
         const points = [
             {x: 0.1, y: 0.1}, // 左上
@@ -160,7 +160,6 @@
         let tapCount = 0;
         const requiredTaps = 5;
 
-        // エラーを画面に表示するヘルパー
         function showError(message, err) {
             errorLog.style.display = 'block';
             errorLog.innerHTML = `<strong>エラーが発生しました:</strong><br>${message}<br><small>${err ? (err.name + ': ' + err.message) : ''}</small>`;
@@ -168,44 +167,13 @@
             instruction.innerHTML = '再試行してください。';
         }
 
-        // 1. まず標準的なAPIでカメラを確実に起動する
-        async function initCameraAndTracker() {
+        // WebGazerを直接起動（HTML上のビデオ要素を自動的に使用します）
+        function startTracker() {
             startBtn.style.display = 'none';
             errorLog.style.display = 'none';
-            instruction.innerHTML = 'カメラへのアクセスを確立しています...';
+            instruction.innerHTML = 'カメラを起動して視線解析システムを準備しています...';
 
             try {
-                // iOSで動くように制約を指定してストリームを取得
-                const constraints = { 
-                    video: { 
-                        facingMode: 'user',
-                        width: { ideal: 640 },
-                        height: { ideal: 480 }
-                    }, 
-                    audio: false 
-                };
-                
-                const stream = await navigator.mediaDevices.getUserMedia(constraints);
-                videoElement.srcObject = stream;
-                
-                // iOS Safariでの自動再生ブロック対策
-                await videoElement.play();
-                
-                // カメラ起動成功後、WebGazerのセットアップへ
-                instruction.innerHTML = '視線解析システムを起動しています...';
-                setupWebGazer();
-
-            } catch (err) {
-                showError('カメラの起動に失敗しました。以下の点をご確認ください。<br>1. 接続が https:// であるか<br>2. iPadの「設定」＞「Safari」でカメラのアクセスが許可されているか', err);
-            }
-        }
-
-        // 2. WebGazerに手動起動したビデオを紐づけて開始
-        function setupWebGazer() {
-            try {
-                // WebGazerが使用するビデオ要素を事前に作成したものに指定
-                webgazer.setVideoElement(videoElement);
-
                 webgazer.setGazeListener(function(data, elapsedTime) {
                     if (data == null) return;
                     // カーソルの移動
@@ -220,7 +188,7 @@
                         setupCalibration();
                     })
                     .catch(err => {
-                        showError('WebGazerの初期化に失敗しました。', err);
+                        showError('カメラの起動または初期設定に失敗しました。カメラのアクセス権限等をご確認ください。', err);
                     });
 
             } catch (err) {
@@ -228,7 +196,7 @@
             }
         }
 
-        // 3. キャリブレーション開始
+        // キャリブレーション開始
         function setupCalibration() {
             instruction.innerHTML = '調整を開始します。<br>赤いドットを見つめながら、<b>ドットを5回</b>タップしてください。';
             overlay.style.background = 'rgba(255, 255, 255, 0.3)';
@@ -254,7 +222,7 @@
             }
         }
 
-        // iPadでのタッチ反応を速くするために pointerdown を使用
+        // タッチ操作の反応を良くするため pointerdown を使用
         calDot.addEventListener('pointerdown', function(e) {
             e.preventDefault();
             tapCount++;
@@ -266,7 +234,7 @@
             showNextDot();
         });
 
-        // 4. トラッキング開始
+        // 追従開始
         function finishCalibration() {
             calDot.style.display = 'none';
             overlay.style.display = 'none';
