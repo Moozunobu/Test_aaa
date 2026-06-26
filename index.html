@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Face & Gaze Tracker for iPad</title>
+    <title>Face & Gaze Tracker for iPad (Detect Fix)</title>
     
-    <!-- iPadでも100%確実に動作する軽量・高互換の顔認識ライブラリを読み込みます -->
+    <!-- 高互換の顔認識ライブラリ -->
     <script src="https://cdn.jsdelivr.net/npm/clmtrackr@1.1.2/build/clmtrackr.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/clmtrackr@1.1.2/models/model_pca_20_svm.js"></script>
 
@@ -30,7 +30,7 @@
             pointer-events: none;
             z-index: 9999;
             display: none;
-            transition: transform 0.1s ease-out; /* 動きを滑らかにする */
+            transition: transform 0.08s ease-out; /* よりレスポンシブに */
         }
 
         /* スタート画面 */
@@ -97,7 +97,7 @@
             display: none;
         }
 
-        /* キャリブレーション（調整）用の真ん中のドット */
+        /* キャリブレーション用の真ん中のドット */
         #calibration-dot {
             position: fixed;
             top: 50%;
@@ -135,7 +135,7 @@
     <!-- 案内用画面 -->
     <div id="overlay">
         <div id="instruction">
-            <h3>顔・視線追従デモ (高互換性版)</h3>
+            <h3>顔・視線追従デモ (認識修正版)</h3>
             <p>ボタンを押してカメラを許可してください。</p>
             <p><small>※お顔が左上の青い枠内に収まるよう、50cm〜60cmほど離れて姿勢を正してください。</small></p>
         </div>
@@ -158,17 +158,14 @@
         let ctrack;
         let isCalibrated = false;
         
-        // 基準となる顔の位置（ニュートラル座標）
         let neutralX = 0;
         let neutralY = 0;
 
-        // 現在のカーソル位置
         let cursorX = window.innerWidth / 2;
         let cursorY = window.innerHeight / 2;
         
-        // 感度設定（お好みに合わせて調整してください）
-        const sensitivityX = 18; // 左右の動きの良さ
-        const sensitivityY = 22; // 上下の動きの良さ
+        const sensitivityX = 20; // 感度を少し上げました
+        const sensitivityY = 24; 
 
         function showError(message, err) {
             errorLog.style.display = 'block';
@@ -177,7 +174,6 @@
             instruction.innerHTML = '再試行してください。';
         }
 
-        // カメラと認識エンジンの起動
         async function initAndStart() {
             startBtn.style.display = 'none';
             errorLog.style.display = 'none';
@@ -185,53 +181,69 @@
 
             try {
                 // 1. カメラ起動
-                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }, 
+                    audio: false 
+                });
                 videoElement.srcObject = stream;
+
+                // 【最重要】iOS Safari対策：ビデオのサイズ（メタデータ）が完全に読み込まれるのを待つ
+                await new Promise((resolve) => {
+                    videoElement.onloadedmetadata = () => {
+                        resolve();
+                    };
+                });
+
+                // 2. ビデオを再生
                 await videoElement.play();
                 videoElement.style.display = 'block';
 
-                instruction.innerHTML = '顔認識システムを起動中...';
+                // 【重要】iPadに「実際のビデオサイズ」を明示的に認識させ、0pxバグを防ぐ
+                videoElement.width = videoElement.videoWidth || 640;
+                videoElement.height = videoElement.videoHeight || 480;
 
-                // 2. clmtrackrの初期化 (エラーの起きない純粋なJSライブラリ)
+                instruction.innerHTML = '顔認識システムを同期中...';
+
+                // 3. clmtrackrの初期化
                 ctrack = new clm.tracker();
                 ctrack.init(pModel);
                 ctrack.start(videoElement);
 
-                // 顔の検出待ちをしてから調整へ移行
+                // 感知待機ループへ
                 checkFaceDetection();
 
             } catch (err) {
-                showError('カメラの起動に失敗しました。', err);
+                showError('カメラの初期起動に失敗しました。', err);
             }
         }
 
-        // 顔がカメラに映っているか確認
+        // 顔の検出判定
         function checkFaceDetection() {
             const positions = ctrack.getCurrentPosition();
-            if (positions) {
+            if (positions && positions.length > 0) {
                 // 顔を検出できたら調整画面を表示
                 setupCalibration();
             } else {
-                instruction.innerHTML = 'お顔をカメラの正面に向けてください。感知を待っています...';
-                setTimeout(checkFaceDetection, 500);
+                instruction.innerHTML = 'お顔がまだ感知されていません。<br>明るい場所で、カメラの正面に顔を向けてお待ちください。';
+                setTimeout(checkFaceDetection, 300); // 判定間隔を少し狭めて反応を良くしました
             }
         }
 
-        // 調整プロセスの案内
+        // 調整案内
         function setupCalibration() {
-            instruction.innerHTML = '姿勢を正して<b>画面中央の「赤い丸」をじっと見つめながら</b>、丸をタップしてください。';
+            instruction.innerHTML = 'お顔を感知しました！<br><br>背筋を伸ばし、<b>画面中央の「赤い丸」をじっと見つめながら</b>、丸をタップしてください。';
             overlay.style.background = 'rgba(255, 255, 255, 0.3)';
-            overlay.style.pointerEvents = 'none'; // タップを背後に通す
+            overlay.style.pointerEvents = 'none';
             calDot.style.display = 'flex';
         }
 
-        // 赤い丸をタップした瞬間の顔の位置を「基準（中心）」として記録
+        // 基準値の登録
         calDot.addEventListener('pointerdown', function(e) {
             e.preventDefault();
             const positions = ctrack.getCurrentPosition();
             
-            if (positions) {
-                // 鼻の骨格点(landmark 62)を基準点として採用
+            if (positions && positions[62]) {
+                // 鼻頭の座標を基準に設定
                 neutralX = positions[62][0];
                 neutralY = positions[62][1];
                 
@@ -240,42 +252,36 @@
                 overlay.style.display = 'none';
                 cursor.style.display = 'block';
 
-                // 追従ループを開始
                 trackingLoop();
             } else {
-                alert("お顔が認識できませんでした。カメラに顔を向けてもう一度タップしてください。");
+                alert("位置の取得に失敗しました。正面を向いてもう一度お試しください。");
             }
         });
 
-        // 追従処理メインループ
+        // 追従ループ
         function trackingLoop() {
             if (!isCalibrated) return;
 
             requestAnimationFrame(trackingLoop);
             const positions = ctrack.getCurrentPosition();
 
-            if (positions) {
-                // 現在の鼻の位置
+            if (positions && positions[62]) {
                 const currentX = positions[62][0];
                 const currentY = positions[62][1];
 
-                // 基準点からのズレを計算（カメラが鏡反転しているためX軸を反転）
                 const diffX = -(currentX - neutralX);
                 const diffY = currentY - neutralY;
 
-                // ズレを画面サイズに変換して目標座標を算出
                 const targetX = (window.innerWidth / 2) + (diffX * sensitivityX);
                 const targetY = (window.innerHeight / 2) + (diffY * sensitivityY);
 
-                // カーソルが滑らかに動くように補間処理（なめらかフィルター）
-                cursorX = cursorX * 0.75 + targetX * 0.25;
-                cursorY = cursorY * 0.75 + targetY * 0.25;
+                // なめらかフィルター
+                cursorX = cursorX * 0.7 + targetX * 0.3;
+                cursorY = cursorY * 0.7 + targetY * 0.3;
 
-                // 画面外にはみ出さないように制限
                 const finalX = Math.max(0, Math.min(window.innerWidth - 24, cursorX));
                 const finalY = Math.max(0, Math.min(window.innerHeight - 24, cursorY));
 
-                // 疑似カーソルの位置を更新
                 cursor.style.left = finalX + 'px';
                 cursor.style.top = finalY + 'px';
             }
