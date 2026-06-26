@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Wink Click Gaze System for iPad</title>
+    <title>Advanced Wink Gaze Interface</title>
     
-    <!-- 顔解析ライブラリ -->
+    <!-- 軽量顔解析ライブラリ -->
     <script src="https://cdn.jsdelivr.net/npm/clmtrackr@1.1.2/build/clmtrackr.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/clmtrackr@1.1.2/models/model_pca_20_svm.js"></script>
 
@@ -16,7 +16,7 @@
             width: 100%;
             height: 100%;
             overflow: hidden;
-            background-color: #eef2f7;
+            background-color: #f1f3f7;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
         }
 
@@ -30,10 +30,10 @@
             pointer-events: none;
             z-index: 9999;
             display: none;
-            transition: transform 0.08s ease-out, filter 0.1s ease;
+            transition: transform 0.08s ease-out, filter 0.08s ease;
         }
 
-        /* アプリ開始時の案内画面 */
+        /* 案内用オーバーレイ */
         #welcomeOverlay {
             position: fixed;
             top: 0;
@@ -82,7 +82,7 @@
             box-shadow: 0 4px 6px rgba(0,122,255,0.2);
         }
 
-        /* デジタルズーム対応カメラ枠 */
+        /* カメラ表示ボックス */
         .camera-viewport {
             position: fixed;
             top: 20px;
@@ -101,8 +101,7 @@
         #ipadCameraStream {
             width: 100%;
             height: 100%;
-            /* 1.7倍にデジタルズーム（トリミング）して顔を画面に大きく表示します */
-            transform: scaleX(-1) scale(1.7); 
+            transform: scaleX(-1) scale(1.7); /* デジタルズーム */
             transform-origin: center;
             object-fit: cover;
         }
@@ -113,13 +112,28 @@
             left: 0;
             width: 100%;
             height: 100%;
-            /* カメラ映像とぴったり重ね合わせるために同じく1.7倍にします */
             transform: scaleX(-1) scale(1.7);
             transform-origin: center;
             pointer-events: none;
         }
 
-        /* キャリブレーション（中央1点のみ） */
+        /* ウインク強度モニター（リアルタイム数値表示） */
+        #pointerTelemetry {
+            position: fixed;
+            top: 150px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.75);
+            color: #fff;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-family: monospace;
+            z-index: 10000;
+            display: none;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+        }
+
+        /* 調整ポイント */
         #neutralAdjustPoint {
             position: fixed;
             top: 50%;
@@ -135,7 +149,7 @@
             cursor: pointer;
         }
 
-        /* メインUI：キーパッド */
+        /* テンキーパッド */
         #numberPad {
             position: fixed;
             top: 55%;
@@ -144,34 +158,35 @@
             width: 280px;
             background: white;
             padding: 20px;
-            border-radius: 20px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
-            display: none; /* 調整完了後に表示 */
+            border-radius: 24px;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.08);
+            display: none;
             z-index: 500;
+            user-select: none;
         }
 
         #padScreen {
             width: 100%;
-            height: 50px;
-            background: #f1f3f5;
-            border-radius: 10px;
+            height: 55px;
+            background: #f8f9fa;
+            border-radius: 12px;
             margin-bottom: 15px;
             display: flex;
             align-items: center;
             justify-content: flex-end;
-            padding: 0 15px;
+            padding: 0 20px;
             box-sizing: border-box;
-            font-size: 1.6rem;
+            font-size: 1.8rem;
             font-weight: bold;
-            color: #2c3e50;
+            color: #1a1a1a;
             overflow: hidden;
-            border: 1px solid #dee2e6;
+            border: 1px solid #e9ecef;
         }
 
         .padRow {
             display: flex;
             justify-content: space-between;
-            margin-bottom: 10px;
+            margin-bottom: 12px;
         }
 
         .padBtn {
@@ -179,27 +194,32 @@
             height: 60px;
             background: #e9ecef;
             border: none;
-            border-radius: 12px;
+            border-radius: 14px;
             font-size: 1.4rem;
             font-weight: bold;
             color: #495057;
             cursor: pointer;
-            transition: background-color 0.1s, transform 0.05s;
+            transition: background-color 0.15s, transform 0.1s, box-shadow 0.1s;
         }
 
-        /* ホバー（カーソルが乗ったとき）の視覚効果 */
-        .padBtn:hover {
-            background-color: #dee2e6;
+        /* 【新機能】カーソルが乗ったときの「ロックオン（吸着）」視覚効果 */
+        .padBtn-hover {
+            background-color: #ced4da !important;
+            transform: scale(1.08);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
         }
     </style>
 </head>
 <body>
 
-    <!-- カメラ枠 -->
+    <!-- カメラプレビュー -->
     <div class="camera-viewport" id="viewport-box">
         <video id="ipadCameraStream" autoplay playsinline muted></video>
         <canvas id="faceTrackingLines"></canvas>
     </div>
+
+    <!-- リアルタイム数値インジケーター -->
+    <div id="pointerTelemetry">左目: -- | 右目: --</div>
 
     <!-- 疑似マウスカーソル (矢印) -->
     <div id="customMousePointer">
@@ -211,9 +231,9 @@
     <!-- 初期案内画面 -->
     <div id="welcomeOverlay">
         <div id="guideMessage">
-            <h3>顔・視線追従キーパッド</h3>
+            <h3>顔・視線追従キーパッド (Wink Click)</h3>
             <p>ボタンを押してカメラを許可してください。</p>
-            <p><small>※デジタルズームを搭載しました。お顔をカメラに近づけすぎず、普段どおりの距離で姿勢を正してください。</small></p>
+            <p><small>※左右の目の開き具合をリアルタイム測定する高精度ウインク検知を搭載しました。</small></p>
         </div>
         <button class="action-button" id="init-trigger" onclick="launchFaceSystem()">システムを起動する</button>
         <div id="fatalErrorLog"></div>
@@ -256,6 +276,7 @@
         const cursor = document.getElementById('customMousePointer');
         const numberPad = document.getElementById('numberPad');
         const padScreen = document.getElementById('padScreen');
+        const telemetry = document.getElementById('pointerTelemetry');
         
         const viewportBox = document.getElementById('viewport-box');
         const cameraView = document.getElementById('ipadCameraStream');
@@ -274,7 +295,7 @@
         const speedWeightX = 22; 
         const speedWeightY = 26; 
 
-        // ウインク判定用のカウントとクールダウン
+        // 誤判定防止カウンター
         let closedLeftFrames = 0;
         let winkActionCooldown = 0;
 
@@ -285,14 +306,12 @@
             guideMessage.innerHTML = '再試行してください。';
         }
 
-        // テンキー処理
         function pressPad(value) {
             if (value === 'C') {
                 padScreen.innerText = '';
             } else if (value === 'E') {
-                // 送信完了の視覚エフェクト
                 padScreen.style.backgroundColor = '#b2f2bb';
-                setTimeout(() => { padScreen.style.backgroundColor = '#f1f3f5'; }, 300);
+                setTimeout(() => { padScreen.style.backgroundColor = '#f8f9fa'; }, 300);
             } else {
                 if (padScreen.innerText.length < 12) {
                     padScreen.innerText += value;
@@ -300,7 +319,7 @@
             }
         }
 
-        // カメラと解析エンジンの完全同期起動
+        // カメラとエンジンの同期起動
         async function launchFaceSystem() {
             initTrigger.style.display = 'none';
             fatalErrorLog.style.display = 'none';
@@ -318,7 +337,6 @@
                 });
                 cameraView.srcObject = stream;
 
-                // iOSサイズ遅延対策
                 await new Promise((resolve) => {
                     cameraView.onloadedmetadata = () => resolve();
                 });
@@ -326,7 +344,6 @@
                 await cameraView.play();
                 viewportBox.style.display = 'block';
 
-                // 解像度を確定して適用
                 const widthVal = cameraView.videoWidth || 640;
                 const heightVal = cameraView.videoHeight || 480;
 
@@ -337,7 +354,6 @@
 
                 guideMessage.innerHTML = '顔検知センサーを同期中...';
 
-                // 骨格抽出エンジン初期化
                 myFaceTracker = new clm.tracker();
                 myFaceTracker.init(pModel);
                 myFaceTracker.start(cameraView);
@@ -345,7 +361,7 @@
                 waitAndObserveFace();
 
             } catch (err) {
-                printLog('起動シーケンスでエラーが発生しました。', err);
+                printLog('起動プロセスで例外が発生しました。', err);
             }
         }
 
@@ -355,24 +371,24 @@
             drawCtx.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
 
             if (landmarkCoords && landmarkCoords.length > 0) {
-                myFaceTracker.draw(drawingCanvas); // 顔認識線を重ねて描画
-                guideMessage.innerHTML = '顔を感知しました！調整を行います。';
+                myFaceTracker.draw(drawingCanvas);
+                guideMessage.innerHTML = 'お顔を感知しました！調整を行います。';
                 beginCalibration();
             } else {
-                guideMessage.innerHTML = `お顔を探しています...<br><small>ズーム調整を行いました。近づきすぎず、普段の距離で真っ直ぐ画面を見てください。</small>`;
+                guideMessage.innerHTML = `お顔を探しています...<br><small>デジタルズームを適用しました。正面を向いて真っ直ぐ画面を見てください。</small>`;
                 setTimeout(waitAndObserveFace, 100);
             }
         }
 
         // 調整開始
         function beginCalibration() {
-            guideMessage.innerHTML = '姿勢を伸ばし、<b>画面中央の赤い丸をじっと見つめながら</b>、丸をタップしてください。';
+            guideMessage.innerHTML = '背筋を伸ばし、<b>画面中央の赤い丸をじっと見つめながら</b>、丸をタップしてください。';
             welcomeOverlay.style.background = 'rgba(255, 255, 255, 0.3)';
             welcomeOverlay.style.pointerEvents = 'none';
             neutralAdjustPoint.style.display = 'block';
         }
 
-        // 中心点を設定
+        // 基準値登録
         neutralAdjustPoint.addEventListener('pointerdown', function(e) {
             e.preventDefault();
             const landmarkCoords = myFaceTracker.getCurrentPosition();
@@ -385,39 +401,38 @@
                 neutralAdjustPoint.style.display = 'none';
                 welcomeOverlay.style.display = 'none';
                 cursor.style.display = 'block';
-                numberPad.style.display = 'block'; // キーパッドを表示
+                numberPad.style.display = 'block';
+                telemetry.style.display = 'block'; // 数値モニターを表示
 
                 executeCursorMove();
             } else {
-                alert("位置情報を取得できませんでした。正面を向き、明るい部屋でもう一度お試しください。");
+                alert("お顔の中心を取得できませんでした。もう一度お試しください。");
             }
         });
 
-        // 2点間の距離を求める関数
         function getDistanceOfPoints(pt1, pt2) {
             return Math.sqrt(Math.pow(pt1[0] - pt2[0], 2) + Math.pow(pt1[1] - pt2[1], 2));
         }
 
-        // クリックシミュレーション
+        // クリック実行
         function performPointerClick() {
-            // カーソル座標の真下にあるHTML要素を取得する
             const elementUnderCursor = document.elementFromPoint(activeCursorX, activeCursorY);
             if (elementUnderCursor) {
-                // カーソルのクリック演出（少し大きくなり、一瞬色反転）
-                cursor.style.transform = 'scale(1.6)';
-                cursor.style.filter = 'hue-rotate(120deg)'; // 一瞬緑色に
+                // クリック時のビジュアル演出
+                cursor.style.transform = 'scale(1.7)';
+                cursor.style.filter = 'hue-rotate(120deg) saturate(2)'; // 一瞬明るい緑に
                 
                 setTimeout(() => {
                     cursor.style.transform = 'scale(1)';
                     cursor.style.filter = 'none';
                 }, 200);
 
-                // 要素をクリック
+                // クリック
                 elementUnderCursor.click();
             }
         }
 
-        // 追従＆ウインク判定ループ
+        // 追従＆相対ウインク判定ループ
         function executeCursorMove() {
             if (!isSetupDone) return;
 
@@ -427,7 +442,6 @@
             drawCtx.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
 
             if (landmarkCoords && landmarkCoords[62]) {
-                // 顔の骨格を描画し続ける
                 myFaceTracker.draw(drawingCanvas);
 
                 // --- 1. カーソル追従計算 ---
@@ -440,7 +454,6 @@
                 const goalX = (window.innerWidth / 2) + (distanceX * speedWeightX);
                 const goalY = (window.innerHeight / 2) + (distanceY * speedWeightY);
 
-                // 加減速フィルター
                 activeCursorX = activeCursorX * 0.7 + goalX * 0.3;
                 activeCursorY = activeCursorY * 0.7 + goalY * 0.3;
 
@@ -450,28 +463,44 @@
                 cursor.style.left = finalX + 'px';
                 cursor.style.top = finalY + 'px';
 
-                // --- 2. 左目ウインク判定 ---
-                // landmarkCoords[29], [31] はユーザーから見て左目（画面上は右側）の上下のまぶた
-                // landmarkCoords[28], [30] は左目の目頭・目尻
-                const leftEyeHeight = getDistanceOfPoints(landmarkCoords[29], landmarkCoords[31]);
-                const leftEyeWidth = getDistanceOfPoints(landmarkCoords[28], landmarkCoords[30]);
-                const leftEyeRatio = leftEyeHeight / leftEyeWidth; // 目が開いている縦横比
+                // --- 2. 【新機能】ボタンのロックオン（吸着）エフェクト処理 ---
+                // 前回のホバー状態を一度クリア
+                const previousHovered = document.querySelector('.padBtn-hover');
+                if (previousHovered) {
+                    previousHovered.classList.remove('padBtn-hover');
+                }
 
-                // ユーザーから見て右目（画面上は左側）
-                const rightEyeHeight = getDistanceOfPoints(landmarkCoords[24], landmarkCoords[26]);
-                const rightEyeWidth = getDistanceOfPoints(landmarkCoords[23], landmarkCoords[25]);
-                const rightEyeRatio = rightEyeHeight / rightEyeWidth;
+                // カーソル真下の要素にホバーエフェクトを付与
+                const currentHovered = document.elementFromPoint(activeCursorX, activeCursorY);
+                if (currentHovered && currentHovered.classList.contains('padBtn')) {
+                    currentHovered.classList.add('padBtn-hover');
+                }
 
-                // ウインクチャタリング（誤動作）防止
+                // --- 3. 高精度相対ウインク判定 ---
+                // 左目のまぶたの開き具合
+                const hDistanceLeft = getDistanceOfPoints(landmarkCoords[29], landmarkCoords[31]);
+                const wDistanceLeft = getDistanceOfPoints(landmarkCoords[28], landmarkCoords[30]);
+                const userLeftEyeRatio = hDistanceLeft / wDistanceLeft;
+
+                // 右目のまぶたの開き具合
+                const hDistanceRight = getDistanceOfPoints(landmarkCoords[24], landmarkCoords[26]);
+                const wDistanceRight = getDistanceOfPoints(landmarkCoords[23], landmarkCoords[25]);
+                const userRightEyeRatio = hDistanceRight / wDistanceRight;
+
+                // 数値インジケーターを更新
+                telemetry.innerText = `左目(Wink): ${userLeftEyeRatio.toFixed(2)} | 右目: ${userRightEyeRatio.toFixed(2)}`;
+
                 if (winkActionCooldown > 0) {
                     winkActionCooldown--;
                 } else {
-                    // 左目の比率が著しく低く（閉じている）、かつ右目がしっかり開いている場合
-                    if (leftEyeRatio < 0.16 && rightEyeRatio > 0.22) {
+                    // 【解決策：相対判定】
+                    // 左目が「0.20以下」かつ「右目が左目より1.4倍以上大きく開いている」場合、
+                    // 片目だけの確実な左目ウインクとして検出します。
+                    if (userLeftEyeRatio < 0.20 && userRightEyeRatio > (userLeftEyeRatio * 1.4)) {
                         closedLeftFrames++;
-                        if (closedLeftFrames >= 2) { // 2フレーム以上連続して目を閉じたらクリックと見なす
+                        if (closedLeftFrames >= 2) { // チャタリング防止
                             performPointerClick();
-                            winkActionCooldown = 25; // 連続入力防止クールダウン（約0.8秒）
+                            winkActionCooldown = 25; // 次のクリックまで約0.8秒待機
                             closedLeftFrames = 0;
                         }
                     } else {
@@ -482,10 +511,4 @@
         }
 
         window.addEventListener('resize', () => {
-            if (typeof myFaceTracker !== 'undefined' && myFaceTracker.isReady()) {
-                myFaceTracker.resize();
-            }
-        });
-    </script>
-</body>
-</html>
+            if (typeof myFaceTracker !== 'undefined' && my
