@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Gaze Tracker for iPad (Debug Version)</title>
+    <!-- WebGazer.js ライブラリ -->
+    <script src="https://webgazer.cs.brown.edu/webgazer.js"></script>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #f0f2f5;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+
+        /* 疑似PC用マウスカーソル */
+        #custom-cursor {
+            position: fixed;
+            width: 20px;
+            height: 20px;
+            left: 50%;
+            top: 50%;
+            pointer-events: none;
+            z-index: 9999;
+            display: none;
+        }
+
+        /* スタート画面・案内用 */
+        #overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.95);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 9000;
+            text-align: center;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        #instruction {
+            font-size: 1.1rem;
+            margin-bottom: 20px;
+            color: #333;
+            line-height: 1.6;
+            max-width: 500px;
+        }
+
+        #error-log {
+            margin-top: 15px;
+            padding: 10px;
+            background: #ffe5e5;
+            color: #cc0000;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            display: none;
+            word-break: break-all;
+            text-align: left;
+            max-width: 90%;
+        }
+
+        button {
+            padding: 14px 28px;
+            font-size: 1rem;
+            background-color: #007aff;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        /* iPadで確実にインライン表示するためのビデオ要素 */
+        #webgazerVideoFeed {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            width: 120px !important;
+            height: 90px !important;
+            z-index: 9999;
+            border-radius: 8px;
+            border: 2px solid #007aff;
+            background: #000;
+            transform: scaleX(-1); /* 鏡のように反転 */
+        }
+
+        /* キャリブレーション用のドット */
+        #calibration-dot {
+            position: fixed;
+            width: 35px;
+            height: 35px;
+            background-color: #ff3b30;
+            border-radius: 50%;
+            display: none;
+            z-index: 9500;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 0 10px rgba(0,0,0,0.3);
+            justify-content: center;
+            align-items: center;
+            color: white;
+            font-size: 14px;
+            font-weight: bold;
+            user-select: none;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- iOS対応のために明示的に定義したプレビュー用ビデオ要素 -->
+    <video id="webgazerVideoFeed" autoplay playsinline muted></video>
+
+    <!-- 疑似PC用カーソル (SVG) -->
+    <div id="custom-cursor">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M4.5 3V19.5L9.75 14.25H18L4.5 3Z" fill="white" stroke="black" stroke-width="2" stroke-linejoin="miter"/>
+        </svg>
+    </div>
+
+    <!-- 案内用画面 -->
+    <div id="overlay">
+        <div id="instruction">
+            <h3>視線追従デモ (iPad対応版)</h3>
+            <p>※アドレスバーの左端が「鍵マーク（https）」になっていることを確認してください。</p>
+            <p>ボタンを押すとカメラの使用許可を求められます。「許可」を選択してください。</p>
+        </div>
+        <button id="start-btn" onclick="initCameraAndTracker()">カメラを起動する</button>
+        <div id="error-log"></div>
+    </div>
+
+    <!-- キャリブレーション用ドット -->
+    <div id="calibration-dot">5</div>
+
+    <script>
+        const overlay = document.getElementById('overlay');
+        const instruction = document.getElementById('instruction');
+        const startBtn = document.getElementById('start-btn');
+        const errorLog = document.getElementById('error-log');
+        const calDot = document.getElementById('calibration-dot');
+        const cursor = document.getElementById('custom-cursor');
+        const videoElement = document.getElementById('webgazerVideoFeed');
+
+        const points = [
+            {x: 0.1, y: 0.1}, // 左上
+            {x: 0.9, y: 0.1}, // 右上
+            {x: 0.5, y: 0.5}, // 中央
+            {x: 0.1, y: 0.9}, // 左下
+            {x: 0.9, y: 0.9}  // 右下
+        ];
+
+        let currentPointIndex = 0;
+        let tapCount = 0;
+        const requiredTaps = 5;
+
+        // エラーを画面に表示するヘルパー
+        function showError(message, err) {
+            errorLog.style.display = 'block';
+            errorLog.innerHTML = `<strong>エラーが発生しました:</strong><br>${message}<br><small>${err ? (err.name + ': ' + err.message) : ''}</small>`;
+            startBtn.style.display = 'inline-block';
+            instruction.innerHTML = '再試行してください。';
+        }
+
+        // 1. まず標準的なAPIでカメラを確実に起動する
+        async function initCameraAndTracker() {
+            startBtn.style.display = 'none';
+            errorLog.style.display = 'none';
+            instruction.innerHTML = 'カメラへのアクセスを確立しています...';
+
+            try {
+                // iOSで動くように制約を指定してストリームを取得
+                const constraints = { 
+                    video: { 
+                        facingMode: 'user',
+                        width: { ideal: 640 },
+                        height: { ideal: 480 }
+                    }, 
+                    audio: false 
+                };
+                
+                const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                videoElement.srcObject = stream;
+                
+                // iOS Safariでの自動再生ブロック対策
+                await videoElement.play();
+                
+                // カメラ起動成功後、WebGazerのセットアップへ
+                instruction.innerHTML = '視線解析システムを起動しています...';
+                setupWebGazer();
+
+            } catch (err) {
+                showError('カメラの起動に失敗しました。以下の点をご確認ください。<br>1. 接続が https:// であるか<br>2. iPadの「設定」＞「Safari」でカメラのアクセスが許可されているか', err);
+            }
+        }
+
+        // 2. WebGazerに手動起動したビデオを紐づけて開始
+        function setupWebGazer() {
+            try {
+                // WebGazerが使用するビデオ要素を事前に作成したものに指定
+                webgazer.setVideoElement(videoElement);
+
+                webgazer.setGazeListener(function(data, elapsedTime) {
+                    if (data == null) return;
+                    // カーソルの移動
+                    cursor.style.left = data.x + 'px';
+                    cursor.style.top = data.y + 'px';
+                });
+
+                webgazer.showPredictionPoints(false); // 標準の赤い点は非表示
+
+                webgazer.begin()
+                    .then(() => {
+                        setupCalibration();
+                    })
+                    .catch(err => {
+                        showError('WebGazerの初期化に失敗しました。', err);
+                    });
+
+            } catch (err) {
+                showError('初期設定中に例外が発生しました。', err);
+            }
+        }
+
+        // 3. キャリブレーション開始
+        function setupCalibration() {
+            instruction.innerHTML = '調整を開始します。<br>赤いドットを見つめながら、<b>ドットを5回</b>タップしてください。';
+            overlay.style.background = 'rgba(255, 255, 255, 0.3)';
+            overlay.style.pointerEvents = 'none'; // タップが背後のドットに届くようにする
+            
+            currentPointIndex = 0;
+            tapCount = 0;
+            showNextDot();
+        }
+
+        function showNextDot() {
+            if (currentPointIndex < points.length) {
+                const pt = points[currentPointIndex];
+                const x = window.innerWidth * pt.x;
+                const y = window.innerHeight * pt.y;
+
+                calDot.style.left = x + 'px';
+                calDot.style.top = y + 'px';
+                calDot.style.display = 'flex';
+                calDot.innerText = requiredTaps - tapCount;
+            } else {
+                finishCalibration();
+            }
+        }
+
+        // iPadでのタッチ反応を速くするために pointerdown を使用
+        calDot.addEventListener('pointerdown', function(e) {
+            e.preventDefault();
+            tapCount++;
+            
+            if (tapCount >= requiredTaps) {
+                currentPointIndex++;
+                tapCount = 0;
+            }
+            showNextDot();
+        });
+
+        // 4. トラッキング開始
+        function finishCalibration() {
+            calDot.style.display = 'none';
+            overlay.style.display = 'none';
+            cursor.style.display = 'block'; // 自作カーソルの表示
+        }
+
+        window.addEventListener('resize', () => {
+            if (typeof webgazer !== 'undefined' && webgazer.isReady()) {
+                webgazer.resize();
+            }
+        });
+    </script>
+</body>
+</html>
